@@ -1,0 +1,205 @@
+:root {
+  --primary-bg: #ff5733;
+  --hover-bg: #ff2e00;
+  --text-color: #fff;
+  --font-family: Arial, sans-serif;
+  --bg-overlay: rgba(0, 0, 0, 0.6);
+  --bg-menu: rgba(0, 0, 0, 0.8);
+  --border-color: #fff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  background: url('https://cdn.dribbble.com/userupload/21445372/file/original-8382aa450e31fe028f14ca81a6f915ea.gif') no-repeat center center fixed;
+  background-size: cover;
+  color: var(--text-color);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: var(--bg-overlay);
+  padding: 20px;
+  border-radius: 10px;
+}
+
+.hidden {
+  display: none;
+}
+
+.error {
+  color: red;
+  font-weight: bold;
+}
+
+input,
+button {
+  padding: 10px;
+  margin: 10px;
+  border: none;
+  border-radius: 5px;
+  font-size: 1rem;
+}
+
+button {
+  background-color: var(--primary-bg);
+  color: var(--text-color);
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+button:hover {
+  background-color: var(--hover-bg);
+}
+
+#lobbyInfo {
+  margin-top: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+#lobbyPlayers {
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  min-width: 300px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 5px;
+}
+
+#gameArea {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  height: 800px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid var(--border-color);
+  margin: 20px auto;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.player {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+  text-align: center;
+  line-height: 40px;
+  font-weight: bold;
+  font-size: 14px;
+  will-change: transform;
+}
+
+.bullet {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: yellow;
+  border-radius: 50%;
+  box-shadow: 0 0 5px yellow;
+  will-change: transform;
+}
+
+.collectible {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background-color: green;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  box-shadow: 0 0 5px green;
+  will-change: transform;
+}
+
+#hud {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: var(--bg-overlay);
+  padding: 10px;
+  border-radius: 5px;
+}
+
+#menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: var(--bg-menu);
+  padding: 20px;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 0 10px var(--border-color);
+}
+
+.menu-toggle {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 10px 15px;
+  background-color: #444;
+  color: var(--text-color);
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+.menu-toggle:hover {
+  background-color: #777;
+}
+
+#messages {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  padding: 10px;
+  border-radius: 5px;
+  max-width: 90%;
+  font-weight: bold;
+}
+
+@media (max-width: 1300px) {
+  #gameArea, #hud {
+    width: 100%;
+  }
+}
+
+.player.npc {
+  border: 2px dashed #666 !important;
+  filter: brightness(0.8);
+}
+
+#npcSettings {
+  margin: 10px;
+  padding: 10px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 5px;
+}
+
+#startSinglePlayer {
+  background: #4CAF50;
+  color: white;
+  padding: 10px;
+  margin: 10px;
+  border: none;
+  cursor: pointer;
+}

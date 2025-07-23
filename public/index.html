@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOM Hell</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="landingScreen" class="screen">
+    <h1>DOM Hell</h1>
+    <button id="multiplayerBtn">Multiplayer</button>
+    <section id="rules">
+      <h2>Game Rules</h2>
+      <ul>
+        <li>Use the arrow keys to move.</li>
+        <li>Avoid incoming projectiles.</li>
+        <li>Collect green collectibles for points.</li>
+        <li>Lose a life when hit by a projectile (3 lives total).</li>
+        <li>Last player standing or highest score wins.</li>
+        <li>Duration: 2 minutes.</li>
+      </ul>
+      <h2>Controls</h2>
+      <ul>
+        <li>Arrow keys for movement.</li>
+        <li>Menu button to pause/resume/restart/exit.</li>
+      </ul>
+    </section>
+  </div>
+  <div id="joinScreen" class="screen hidden">
+    <h1>DOM Hell</h1>
+    <form id="joinForm">
+      <input type="text" id="playerName" placeholder="Enter unique name" required>
+      <button type="submit">Join Lobby</button>
+    </form>
+    <div id="joinError" class="error"></div>
+    <div id="lobbyInfo" class="hidden">
+      <h2>Lobby</h2>
+      <div id="lobbyPlayers"></div>
+      <button id="startGame" class="hidden">Start Game</button>
+      <button id="exitLobby">Exit Lobby</button>
+    </div>
+  </div>
+  <div id="gameScreen" class="screen hidden">
+    <div id="hud">
+      <div id="scoreboard"></div>
+      <div id="timer">00:00</div>
+    </div>
+    <button id="menuToggle" class="menu-toggle">Menu</button>
+    <div id="gameArea"></div>
+    <div id="menu" class="hidden">
+      <button id="resume">Resume</button>
+      <button id="restart">Restart</button>
+      <button id="exitGame">Exit</button>
+    </div>
+    <div id="messages"></div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
