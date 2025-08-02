@@ -12,6 +12,13 @@
   box-sizing: border-box;
 }
 
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   font-family: var(--font-family);
@@ -19,18 +26,28 @@ body {
   background-size: cover;
   color: var(--text-color);
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .screen {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
   min-height: 100vh;
   background: var(--bg-overlay);
-  padding: 20px;
+  padding-top: 40px;
+  padding-bottom: 20px;
+  padding-left: 20px;
+  padding-right: 20px;
   border-radius: 10px;
+  overflow-y: auto;
+}
+
+#gameScreen.screen {
+  padding-top: 10px;
+  min-height: 100%;
+  height: auto;
 }
 
 .hidden {
@@ -85,7 +102,7 @@ button:hover {
   height: 800px;
   background: rgba(0, 0, 0, 0.7);
   border: 2px solid var(--border-color);
-  margin: 20px auto;
+  margin: 0 auto;
   overflow: hidden;
   border-radius: 10px;
 }
@@ -126,11 +143,14 @@ button:hover {
 }
 
 #hud {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
   justify-content: space-between;
   width: 100%;
   max-width: 1200px;
-  margin: 0 auto;
+  margin: 0 auto 10px auto;
   background: var(--bg-overlay);
   padding: 10px;
   border-radius: 5px;
@@ -181,7 +201,14 @@ button:hover {
   #gameArea, #hud {
     width: 100%;
   }
+  .screen {
+    padding-top: 3px;
+  }
+  #gameScreen.screen {
+    padding-top: 5px;
+  }
 }
+
 
 .player.npc {
   border: 2px dashed #666 !important;

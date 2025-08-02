@@ -69,7 +69,7 @@ const Renderer = (function() {
                 const playerElem = document.createElement('div');
                 playerElem.classList.add('player');
                 playerElem.setAttribute('data-id', id);
-                playerElem.textContent = pData.name;
+                playerElem.textContent = getShortName(pData.name);
                 playerElem.style.backgroundColor = pData.color || 'red';
                 gameArea.appendChild(playerElem);
                 playerElements[id] = playerElem;
@@ -87,6 +87,31 @@ const Renderer = (function() {
                 playerElem.style.opacity = pData.alive ? 1 : 0.5;
                 playerElem.lastAlive = pData.alive;
             }
+        }
+
+        function getShortName(name) {
+            if (!name || typeof name !== 'string') return '';
+
+            // Cleaning: remove symbols @ # _ . - and extra spaces
+            const cleaned = name
+                .trim()
+                .replace(/[@#._\-]/g, ' ')
+                .replace(/\s+/g, ' ');
+
+            const parts = cleaned.split(' ').filter(Boolean);
+
+            if (parts.length >= 3) {
+                // Return initials from first 3 words
+                return (parts[0][0] + parts[1][0] + parts[2][0]).toUpperCase();
+            } else if (parts.length === 2) {
+                // Returning initials from 2 words
+                return (parts[0][0] + parts[1][0]).toUpperCase();
+            } else if (parts.length === 1) {
+                const word = parts[0].toUpperCase();
+                return word.length <= 3 ? word : word.slice(0, 3);
+            }
+
+            return '';
         }
     }
 
@@ -338,6 +363,9 @@ socket.on('gameOver', (data) => {
 });
 
 document.addEventListener('keydown', (event) => {
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        event.preventDefault();
+    }
     socket.emit('playerInput', { key: event.key, state: 'down' });
 });
 document.addEventListener('keyup', (event) => {
