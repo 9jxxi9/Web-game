@@ -1,5 +1,18 @@
 const { GAME_WIDTH, GAME_HEIGHT, PLAYER_SIZE, getRandomColor, GAME_MODES } = require('./constants');
 
+function resetGameState(gameState) {
+    gameState.players = {};
+    gameState.bullets = [];
+    gameState.collectibles = [];
+    gameState.npcs = [];
+    gameState.mode = null;
+    gameState.leader = null;
+    gameState.paused = false;
+    gameState.gameStarted = false;
+    gameState.gameEnded = false;
+    gameState.gameStartTime = null;
+}
+
 function handleJoin(socket, data, gameState, io, callback) {
     if (gameState.mode === GAME_MODES.SINGLE && socket.id !== gameState.leader) {
         socket.emit('joinError', { error: 'Single player mode active' });
@@ -71,13 +84,8 @@ function handleMenuAction(socket, data, gameState, io) {
         } else if (data.action === 'quit') {
             delete gameState.players[socket.id];
             io.emit('lobbyUpdate', gameState.players);
-            if (Object.keys(gameState.players).length === 0) {
-                gameState.paused = false;
-                gameState.gameStarted = false;
-                gameState.gameEnded = false;
-                gameState.bullets = [];
-                gameState.collectibles = [];
-                gameState.gameStartTime = null;
+            if (Object.keys(gameState.players).length === 0 || gameState.mode === GAME_MODES.SINGLE) {
+                resetGameState(gameState);
             }
         }
     }
@@ -88,14 +96,18 @@ function handleLeaveLobby(socket, gameState, io) {
         io.emit('gameMessage', `${gameState.players[socket.id].name} has left the lobby.`);
         delete gameState.players[socket.id];
         io.emit('lobbyUpdate', gameState.players);
+
+        if (Object.keys(gameState.players).length === 0) {
+            resetGameState(gameState);
+        }
     }
 }
 
 function handleStartGame(socket, gameState, io) {
-    console.log("[SERVER] Обработка startGame. Текущий режим:", gameState.mode);
+    console.log("[SERVER] StartGame processing. Current mode:", gameState.mode);
     
     if (gameState.mode === GAME_MODES.SINGLE) {
-        console.log("[SERVER] Запуск Single Player. NPC:", gameState.npcCount);
+        console.log("[SERVER] Launch Single Player. NPC:", gameState.npcCount);
         
         gameState.players = {};
         gameState.bullets = [];
@@ -115,12 +127,14 @@ function handleStartGame(socket, gameState, io) {
             inputs: {},
             isNPC: false
         };
-        
-        for (let i = 0; i < gameState.npcCount; i++) {
-            const npcId = `npc_${Date.now()}_${i}`;
+
+        gameState.npcs.forEach((npcConfig, index) => {
+            const npcId = `npc_${Date.now()}_${index}`;
+            const { name, difficulty, speed, reaction, evasion } = npcConfig;
+
             gameState.players[npcId] = {
                 id: npcId,
-                name: `NPC-${i+1} (${gameState.npcDifficulty})`,
+                name: name || `NPC-${index + 1}`,
                 x: Math.random() * (GAME_WIDTH - PLAYER_SIZE),
                 y: Math.random() * (GAME_HEIGHT - PLAYER_SIZE),
                 score: 0,
@@ -129,14 +143,24 @@ function handleStartGame(socket, gameState, io) {
                 color: '#666666',
                 inputs: {},
                 isNPC: true,
-                difficulty: gameState.npcDifficulty
+                difficulty: difficulty || 'custom',
+                customConfig: {
+                    speed,
+                    reaction,
+                    evasion
+                }
             };
-            console.log("[SERVER] Создан NPC:", npcId);
-        }
-        
+
+            console.log("[SERVER] Created NPC:", npcId, gameState.players[npcId]);
+        });
+
         io.emit('gameStarted', gameState);
-        console.log("[SERVER] Событие gameStarted отправлено");
+        console.log("[SERVER] GameStarted event sent");
         return;
+    }
+    if (gameState.mode === GAME_MODES.MULTI) {
+        // Make sure there are no NPCs left.
+        gameState.npcs = [];
     }
     if (Object.keys(gameState.players).length < 2) {
         console.log('[DEBUG] Not enough players for multiplayer');
@@ -167,7 +191,7 @@ function registerSocketHandlers(io, gameState) {
     io.on('connection', socket => {
         console.log('A new player connected:', socket.id);
         socket.on('startGame', () => {
-            console.log("[SERVER] Получен запрос startGame от:", socket.id);
+            console.log("[SERVER] The StartGame request was received from:", socket.id);
             handleStartGame(socket, gameState, io);
         });
         
@@ -176,18 +200,26 @@ function registerSocketHandlers(io, gameState) {
         socket.on('menuAction', data => handleMenuAction(socket, data, gameState, io));
         socket.on('leaveLobby', () => handleLeaveLobby(socket, gameState, io));
         socket.on('disconnect', () => handleDisconnect(socket, gameState, io));
-        
+
         socket.on('setGameMode', (data, callback) => {
             gameState.mode = data.mode;
-            gameState.npcCount = data.npcCount;
-            gameState.npcDifficulty = data.difficulty;
-            if(data.mode === 'single'){
+
+            if (data.mode === 'single') {
                 gameState.leader = socket.id;
+                gameState.npcs = data.npcs || []; // save the NPC array
+            } else if (data.mode === 'multi') {
+                // Reset NPC and mode when switching to multiplayer
+                gameState.npcs = [];
+                gameState.leader = null;
+            } else if (data.mode === 'none') {
+                resetGameState(gameState);
             }
+
             if (typeof callback === 'function') {
                 callback({ success: true });
             }
         });
+
     });
 }
 

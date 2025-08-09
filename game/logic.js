@@ -11,6 +11,8 @@ const {
 } = require('./constants');
 const NPC = require('./npc');
 
+const npcControllers = {}; // npc controllers outside GameState
+
 let bulletCounter = 0;
 let collectibleCounter = 0;
 let lastBulletSpawn = Date.now();
@@ -104,74 +106,99 @@ function handleCollisions(gameState, io) {
 }
 
 function updateGame(gameState, io) {
-  if (!gameState.gameStarted) return;
-  
+  if (!gameState.gameStarted || gameState.paused || gameState.gameEnded) return;
+
+  const now = Date.now();
+
+  // Create controllers for new NPCs
   Object.values(gameState.players).forEach(player => {
-    if (player.isNPC && player.alive) {
-      const npc = new NPC(player.difficulty);
-      npc.x = player.x;
-      npc.y = player.y;
-      npc.update(player, gameState);
-      if (player.difficulty === "hard") {
-        player.lives += 0.002;
-        player.lives = Math.min(player.lives, 5);
-      }
+    if (player.isNPC && !npcControllers[player.id]) {
+      npcControllers[player.id] = new NPC(player.difficulty, player);
     }
   });
-  if (!gameState.gameStarted || gameState.paused || gameState.gameEnded) return;
-  const now = Date.now();
+
+  // update NPC
+  Object.entries(npcControllers).forEach(([playerId, npcAI]) => {
+    const player = gameState.players[playerId];
+    if (!player || !player.alive) {
+      delete npcControllers[playerId];
+      return;
+    }
+    npcAI.update(player, gameState);
+    // console.log(playerId, npcAI.getDebugInfo());
+  });
+
+  // spawn bullets
   if (now - lastBulletSpawn > bulletSpawnInterval) {
     spawnBullet(gameState);
     lastBulletSpawn = now;
   }
+
+  // spawn bonuses
   if (now - lastCollectibleSpawn > collectibleSpawnInterval) {
     spawnCollectible(gameState);
     lastCollectibleSpawn = now;
   }
+
+  // Processing players movement
   Object.keys(gameState.players).forEach(id => {
     const player = gameState.players[id];
-    if (player.alive) {
+    if (!player.isNPC && player.alive) {
       if (player.inputs['ArrowUp'] === 'down') player.y -= PLAYER_SPEED;
       if (player.inputs['ArrowDown'] === 'down') player.y += PLAYER_SPEED;
       if (player.inputs['ArrowLeft'] === 'down') player.x -= PLAYER_SPEED;
       if (player.inputs['ArrowRight'] === 'down') player.x += PLAYER_SPEED;
+
       player.x = Math.max(0, Math.min(GAME_WIDTH - PLAYER_SIZE, player.x));
       player.y = Math.max(0, Math.min(GAME_HEIGHT - PLAYER_SIZE, player.y));
     }
   });
+
+  // bullets movement
   gameState.bullets.forEach(bullet => {
     bullet.x += bullet.vx;
     bullet.y += bullet.vy;
   });
+
+  // Removal of bullets that went beyond the boundaries
   gameState.bullets = gameState.bullets.filter(bullet =>
-    bullet.x >= -BULLET_SIZE && bullet.x <= GAME_WIDTH &&
-    bullet.y >= -BULLET_SIZE && bullet.y <= GAME_HEIGHT
+      bullet.x >= -BULLET_SIZE && bullet.x <= GAME_WIDTH &&
+      bullet.y >= -BULLET_SIZE && bullet.y <= GAME_HEIGHT
   );
+
+  // Clashes
   handleCollisions(gameState, io);
-  if (!gameState.gameEnded) {
-    const alivePlayers = Object.values(gameState.players).filter(p => p.alive);
-    if (now - gameState.gameStartTime >= GAME_DURATION || alivePlayers.length <= 1) {
-      gameState.gameEnded = true;
-      const winner = alivePlayers.length === 1
+
+  // The end of the game
+  const alivePlayers = Object.values(gameState.players).filter(p => p.alive);
+  if (now - gameState.gameStartTime >= GAME_DURATION || alivePlayers.length <= 1) {
+    gameState.gameEnded = true;
+    const winner = alivePlayers.length === 1
         ? alivePlayers[0]
         : Object.values(gameState.players).reduce((max, p) => (!max || p.score > max.score ? p : max), null);
-      io.emit('playSound', { sound: 'gameover' });
-      io.emit('gameOver', { winner, gameState });
-      io.emit('gameMessage', `Game Over! Winner: ${winner ? winner.name : "No one"}`);
-      setTimeout(() => {
-        gameState.bullets = [];
-        gameState.collectibles = [];
-        gameState.gameStarted = false;
-        gameState.gameEnded = false;
-        gameState.paused = false;
-        gameState.gameStartTime = null;
-        gameState.players = {};
-        io.emit('lobbyUpdate', gameState.players);
-        io.emit('gameMessage', 'Lobby is now open for a new game.');
-      }, 5000);
-    }
+
+    io.emit('playSound', { sound: 'gameover' });
+    io.emit('gameOver', { winner, gameState });
+    io.emit('gameMessage', `Game Over! Winner: ${winner ? winner.name : "No one"}`);
+
+    setTimeout(() => {
+      gameState.bullets = [];
+      gameState.collectibles = [];
+      gameState.gameStarted = false;
+      gameState.gameEnded = false;
+      gameState.paused = false;
+      gameState.gameStartTime = null;
+      gameState.players = {};
+      io.emit('lobbyUpdate', gameState.players);
+      io.emit('gameMessage', 'Lobby is now open for a new game.');
+    }, 5000);
+
+    Object.keys(npcControllers).forEach(id => {
+          delete npcControllers[id];
+    });
   }
 }
+
 
 module.exports = {
   initGameState,

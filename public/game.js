@@ -25,23 +25,105 @@ const resumeBtn = document.getElementById('resume');
 const restartBtn = document.getElementById('restart');
 const exitGameBtn = document.getElementById('exitGame');
 
-const modeSelector = document.createElement('div');
-modeSelector.innerHTML = `
-<select id="gameMode">
-<option value="multi">Multiplayer</option>
-<option value="single">Single Player</option>
-</select>
-<div id="npcSettings">
-<input type="number" id="npcCount" min="1" max="3" value="1">
-<select id="npcDifficulty">
-<option value="easy">Easy</option>
-<option value="medium">Medium</option>
-<option value="hard">Hard</option>
-</select>
-</div>
-<button id="startSinglePlayer">Start Single Player</button>
+const singlePlayerModeControls = document.createElement('div');
+singlePlayerModeControls.innerHTML = `
+  <div id="npcList"></div>
+  <button id="addNpcBtn">➕ Add NPC</button>
+  <button id="startSinglePlayer">Start Single Player</button>
 `;
-document.body.prepend(modeSelector);
+document.body.prepend(singlePlayerModeControls);
+
+const npcList = document.getElementById('npcList');
+const addNpcBtn = document.getElementById('addNpcBtn');
+
+let npcCounter = 1;
+let npcs = [];
+
+function renderNpcList() {
+    npcList.innerHTML = '';
+    npcs.forEach((npc, index) => {
+        const npcDiv = document.createElement('div');
+        npcDiv.className = 'npc-entry';
+        npcDiv.innerHTML = `
+      <label>Name: <input type="text" class="npc-name" data-index="${index}" value="${npc.name}"></label>
+      <label>Preset:
+        <select class="npc-preset" data-index="${index}">
+          <option value="">Custom</option>
+          <option value="easy"${npc.preset === 'easy' ? ' selected' : ''}>Easy</option>
+          <option value="medium"${npc.preset === 'medium' ? ' selected' : ''}>Medium</option>
+          <option value="hard"${npc.preset === 'hard' ? ' selected' : ''}>Hard</option>
+        </select>
+      </label>
+      <label>Speed: <input type="number" class="npc-speed" data-index="${index}" value="${npc.speed}" step="0.1" min="0"></label>
+      <label>Reaction Time (ms): <input type="number" class="npc-reaction" data-index="${index}" value="${npc.reaction}" min="0"></label>
+      <label>Evasion (0–1): <input type="number" class="npc-evasion" data-index="${index}" value="${npc.evasion ?? 0.5}" step="0.1" min="0" max="1"></label>
+      <button class="removeNpcBtn" data-index="${index}">❌</button>
+    `;
+        npcList.appendChild(npcDiv);
+    });
+}
+
+addNpcBtn.addEventListener('click', () => {
+    if (npcs.length >= 3) {
+        alert("You can only add up to 3 NPCs.");
+        return;
+    }
+    npcs.push({
+        name: `NPC-${npcCounter++}`,
+        preset: 'easy',
+        speed: 3,
+        reaction: 400,
+        evasion: 0.3,
+    });
+    renderNpcList();
+});
+
+npcList.addEventListener('input', (e) => {
+    const index = parseInt(e.target.dataset.index);
+    const npc = npcs[index];
+
+    if (e.target.classList.contains('npc-name')) {
+        npc.name = e.target.value;
+    } else if (e.target.classList.contains('npc-speed')) {
+        npc.speed = parseFloat(e.target.value);
+        npc.preset = ''; // drop the preset with manual input
+        npcList.querySelector(`.npc-preset[data-index="${index}"]`).value = '';
+    } else if (e.target.classList.contains('npc-reaction')) {
+        npc.reaction = parseInt(e.target.value);
+        npc.preset = '';
+        npcList.querySelector(`.npc-preset[data-index="${index}"]`).value = '';
+    } else if (e.target.classList.contains('npc-evasion')) {
+        npc.evasion = parseFloat(e.target.value);
+        npc.preset = '';
+        npcList.querySelector(`.npc-preset[data-index="${index}"]`).value = '';
+    } else if (e.target.classList.contains('npc-preset')) {
+        const preset = e.target.value;
+        npc.preset = preset;
+
+        if (preset === 'easy') {
+            npc.speed = 3;
+            npc.reaction = 400;
+            npc.evasion = 0.3;
+        } else if (preset === 'medium') {
+            npc.speed = 4.5;
+            npc.reaction = 250;
+            npc.evasion = 0.6;
+        } else if (preset === 'hard') {
+            npc.speed = 6;
+            npc.reaction = 150;
+            npc.evasion = 0.9;
+        }
+        renderNpcList();
+    }
+});
+
+npcList.addEventListener('click', (e) => {
+    if (e.target.classList.contains('removeNpcBtn')) {
+        const index = parseInt(e.target.dataset.index);
+        npcs.splice(index, 1);
+        renderNpcList();
+    }
+});
 
 let player = null;
 let gameState = null;
@@ -216,6 +298,8 @@ const Renderer = (function() {
 })();
 
 multiplayerBtn.addEventListener('click', () => {
+    socket.emit('setGameMode', { mode: 'multi' });
+
     landingScreen.classList.add('hidden');
     joinScreen.classList.remove('hidden');
     joinForm.classList.remove('hidden');
@@ -373,23 +457,25 @@ document.addEventListener('keyup', (event) => {
 });
 
 document.getElementById('startSinglePlayer').addEventListener('click', () => {
-    const npcCount = parseInt(document.getElementById('npcCount').value);
-    const difficulty = document.getElementById('npcDifficulty').value;
-    
-    console.log('[CLIENT] Emitting setGameMode');
+    if (npcs.length < 1) {
+        alert("At least 1 NPC is required to start a single-player game.");
+        return;
+    }
+    const npcData = npcs.map(npc => ({
+        name: npc.name || 'NPC',
+        difficulty: npc.preset || 'custom',
+        speed: npc.speed,
+        reaction: npc.reaction,
+        evasion: npc.evasion
+    }));
+
     socket.emit('setGameMode', {
         mode: 'single',
-        npcCount,
-        difficulty
+        npcs: npcData
     }, (response) => {
-        console.log('[CLIENT] setGameMode response:', response);
         if (response.success) {
-            console.log('[CLIENT] Emitting join');
             socket.emit('join', { name: 'Player' }, (joinResponse) => {
-                console.log('[CLIENT] join response:', joinResponse);
-                
                 if (!joinResponse?.error) {
-                    console.log('[CLIENT] Emitting startGame');
                     socket.emit('startGame');
                 }
             });
