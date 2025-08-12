@@ -15,20 +15,36 @@ const port = process.env.PORT || 3000;
 app.use(express.static('public'));
 
 let gameState = initGameState();
-// admin storage field
 gameState.adminId = null;
+gameState.adminPrivateGame = {
+    active: false,
+    players: {},
+    bullets: [],
+    collectibles: [],
+    gameStartTime: null,
+    paused: false,
+    gameEnded: false,
+    gameStarted: false
+};
 
 registerSocketHandlers(io, gameState);
 
 setInterval(() => {
-    updateGame(gameState, io);
-    io.emit('gameState', gameState);
+    if (gameState.gameStarted && !gameState.adminPrivateGame.active) {
+        updateGame(gameState, io);
+        io.emit('gameState', gameState);
+    }
+
+    if (gameState.adminPrivateGame.active && gameState.adminId) {
+        updateGame(gameState.adminPrivateGame, io.to(gameState.adminId), true);
+
+        io.to(gameState.adminId).emit('adminGameState', gameState.adminPrivateGame);
+    }
 }, 16);
 
 io.on('connection', (socket) => {
     console.log('New connection:', socket.id);
 
-    // The first player to connect becomes the administrator
     if (!gameState.adminId) {
         gameState.adminId = socket.id;
         socket.emit('adminStatus', { isAdmin: true });
@@ -42,8 +58,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        // If the administrator has disconnected, appoint a new one from the remaining players
+
         if (socket.id === gameState.adminId) {
+
+            if (gameState.adminPrivateGame.active) {
+                gameState.adminPrivateGame.active = false;
+                gameState.adminPrivateGame.gameStarted = false;
+            }
+
             const remainingPlayers = Object.keys(gameState.players).filter(id => id !== socket.id);
             if (remainingPlayers.length > 0) {
                 gameState.adminId = remainingPlayers[0];

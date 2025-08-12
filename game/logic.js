@@ -105,7 +105,7 @@ function handleCollisions(gameState, io) {
   });
 }
 
-function updateGame(gameState, io) {
+function updateGame(gameState, io, isPrivateGame = false) {
   if (!gameState.gameStarted || gameState.paused || gameState.gameEnded) return;
 
   const now = Date.now();
@@ -177,9 +177,40 @@ function updateGame(gameState, io) {
         ? alivePlayers[0]
         : Object.values(gameState.players).reduce((max, p) => (!max || p.score > max.score ? p : max), null);
 
-    io.emit('playSound', { sound: 'gameover' });
-    io.emit('gameOver', { winner, gameState });
-    io.emit('gameMessage', `Game Over! Winner: ${winner ? winner.name : "No one"}`);
+      io.emit('playSound', { sound: 'gameover' });
+
+      console.log(`isPrivateGame: ${isPrivateGame}`)
+      if (isPrivateGame) {
+          io.emit('adminGameOver', { reason: 'Game ended', winner });
+          io.emit('adminGameMessage', `Game Over! Winner: ${winner ? winner.name : "No one"}`);
+          console.log(`gameState.adminId: ${gameState.adminId}`);
+          if (gameState.adminId) {
+              setTimeout(() => {
+                  console.log(`isPrivateGame - true, adminId: ${gameState.adminId}`);
+                  io.to(gameState.adminId).emit('enableSinglePlayerControls');
+              }, 5500);
+          }
+          if (gameState) {
+              gameState.active = false;
+              gameState.gameStarted = false;
+              gameState.gameEnded = false;
+              gameState.paused = false;
+              gameState.players = {};
+              gameState.bullets = [];
+              gameState.collectibles = [];
+              gameState.gameStartTime = null;
+          }
+      } else {
+          io.emit('gameOver', { winner, gameState });
+          io.emit('gameMessage', `Game Over! Winner: ${winner ? winner.name : "No one"}`);
+          console.log(`gameState.adminId: ${gameState.adminId}`);
+          if (gameState.adminId) {
+              setTimeout(() => {
+                  console.log(`isPrivateGame - false, adminId: ${gameState.adminId}`);
+                  io.to(gameState.adminId).emit('enableSinglePlayerControls');
+              }, 5500);
+          }
+      }
 
     setTimeout(() => {
       gameState.bullets = [];

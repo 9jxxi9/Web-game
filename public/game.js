@@ -313,18 +313,94 @@ joinForm.addEventListener('submit', (e) => {
     socket.emit('join', { name: name });
 });
 
+let isInAdminPrivateGame = false;
+
+socket.on('adminGameStarted', (privateGameState) => {
+    console.log('[CLIENT] Admin private game started!', privateGameState);
+    isInAdminPrivateGame = true;
+    singlePlayerModeControls.style.display = 'none';
+
+    landingScreen.classList.add('hidden');
+    joinScreen.classList.add('hidden');
+    gameScreen.classList.remove('hidden');
+    gameStartTime = privateGameState.gameStartTime;
+    pausedTimeAcc = 0;
+    pauseStartTime = null;
+    inGame = true;
+    menu.classList.add('hidden');
+
+    gameState = privateGameState;
+
+    Renderer.updatePlayers();
+    Renderer.updateBullets();
+    Renderer.updateCollectibles();
+    Renderer.updateScoreboard();
+
+    if (!animationFrameId) {
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
+});
+
+socket.on('adminGameState', (privateGameState) => {
+    if (isInAdminPrivateGame) {
+
+        gameState = privateGameState;
+        Renderer.updatePlayers();
+        Renderer.updateBullets();
+        Renderer.updateCollectibles();
+        Renderer.updateScoreboard();
+    }
+});
+
+socket.on('adminGameOver', (data) => {
+    console.log('[CLIENT] Admin private game ended:', data.reason);
+    isInAdminPrivateGame = false;
+
+    timerDisplay.textContent = "00:00";
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+    gameStartTime = null;
+    menu.classList.add('hidden');
+
+    setTimeout(() => {
+        inGame = false;
+        gameScreen.classList.add('hidden');
+        landingScreen.classList.remove('hidden');
+        gameState = null;
+    }, 5000);
+});
+
+socket.on('adminGameMessage', (msg) => {
+    const p = document.createElement('p');
+    p.textContent = msg;
+    p.style.color = '#ff6b6b';
+    messagesDiv.appendChild(p);
+    setTimeout(() => {
+        if (messagesDiv.contains(p)) {
+            messagesDiv.removeChild(p);
+        }
+    }, 5000);
+});
+
+let isCurrentUserAdmin = false;
+
 socket.on('adminStatus', (data) => {
+    isCurrentUserAdmin = data.isAdmin;
     if (data.isAdmin) {
-        // Show controls to admin only
-        document.getElementById('adminControls').style.display = 'block';
+
+        singlePlayerModeControls.style.display = 'block';
+        document.body.classList.add('admin-user');
     } else {
-        // Hide controls for regular players
-        document.getElementById('adminControls').style.display = 'none';
+
+        singlePlayerModeControls.style.display = 'none';
+        document.body.classList.remove('admin-user');
     }
 });
 
 socket.on('forceReturnToMenu', () => {
-    // Forcefully return the player to the main menu
+
+    isInAdminPrivateGame = false;
+
     cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
     gameStartTime = null;
@@ -341,8 +417,7 @@ socket.on('forceReturnToMenu', () => {
     player = null;
     gameState = null;
 
-    // Showing a message to the user
-    alert('Game ended because admin left or disconnected.');
+    console.log('Game ended because admin left or disconnected.');
 });
 
 socket.on('joinSuccess', (data) => {
@@ -361,14 +436,17 @@ socket.on('lobbyUpdate', (players) => {
     ids.forEach(id => {
         const p = document.createElement('div');
         const playerData = players[id];
-        // Showing admin status
+
         const adminLabel = playerData.isAdmin ? ' [ADMIN]' : '';
         p.textContent = playerData.name + adminLabel;
+        if (playerData.isAdmin) {
+            p.style.fontWeight = 'bold';
+            p.style.color = '#ff6b6b';
+        }
         lobbyPlayersDiv.appendChild(p);
     });
 
-    // The game launch button is shown only for the admin
-    if (player && player.isAdmin) {
+    if (isCurrentUserAdmin) {
         startGameBtn.classList.remove('hidden');
         startGameBtn.textContent = 'Start Game (Admin)';
     } else {
@@ -390,29 +468,39 @@ startGameBtn.addEventListener('click', () => {
     socket.emit('startGame');
 });
 
+socket.off('gameStarted');
 socket.on('gameStarted', (state) => {
-    console.log('[CLIENT] Game started! Players:', state.players);
-    console.log("[CLIENT] Game started!", state);
-    landingScreen.classList.add('hidden'); 
-    joinScreen.classList.add('hidden');
-    gameScreen.classList.remove('hidden');
-    gameStartTime = state.gameStartTime;
-    pausedTimeAcc = 0;
-    pauseStartTime = null;
-    inGame = true;
-    menu.classList.add('hidden');
-    if (!animationFrameId) {
-        animationFrameId = requestAnimationFrame(gameLoop);
+
+    if (!isInAdminPrivateGame) {
+        if (isCurrentUserAdmin) {
+            singlePlayerModeControls.style.display = 'none';
+        }
+        console.log('[CLIENT] Multiplayer game started! Players:', state.players);
+        console.log("[CLIENT] Game started!", state);
+        landingScreen.classList.add('hidden');
+        joinScreen.classList.add('hidden');
+        gameScreen.classList.remove('hidden');
+        gameStartTime = state.gameStartTime;
+        pausedTimeAcc = 0;
+        pauseStartTime = null;
+        inGame = true;
+        menu.classList.add('hidden');
+        if (!animationFrameId) {
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
     }
+    console.log(`game started animationFrameId: ${animationFrameId}`);
 });
 
 socket.on('playSound', (data) => {
-    if (data.sound === 'hit') {
-        hitSound.play();
-    } else if (data.sound === 'gameover') {
-        gameOverSound.play();
-    } else if (data.sound === 'collectible') {
-        collectibleSound.play();
+    if (animationFrameId) {
+        if (data.sound === 'hit') {
+            hitSound.play();
+        } else if (data.sound === 'gameover') {
+            gameOverSound.play();
+        } else if (data.sound === 'collectible') {
+            collectibleSound.play();
+        }
     }
 });
 
@@ -435,6 +523,7 @@ restartBtn.addEventListener('click', () => {
 
 exitGameBtn.addEventListener('click', () => {
     socket.emit('menuAction', { action: 'quit' });
+    console.log(`exitBtn event listener animationFrameId: ${animationFrameId}`);
     cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
     gameStartTime = null;
@@ -458,41 +547,60 @@ socket.on('gameMessage', (msg) => {
     }, 5000);
 });
 
+socket.off('gameState');
 socket.on('gameState', (state) => {
-    gameState = state;
-    Renderer.updatePlayers();
-    Renderer.updateBullets();
-    Renderer.updateCollectibles();
-    Renderer.updateScoreboard();
+
+    if (!isInAdminPrivateGame) {
+        gameState = state;
+        Renderer.updatePlayers();
+        Renderer.updateBullets();
+        Renderer.updateCollectibles();
+        Renderer.updateScoreboard();
+    }
 });
 
+socket.off('gameOver');
 socket.on('gameOver', (data) => {
-    console.log('[CLIENT] Game Over!', data);
-    timerDisplay.textContent = "00:00";
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
-    gameStartTime = null;
-    menu.classList.add('hidden');
-    socket.emit('leaveLobby');
-    setTimeout(() => {
-        inGame = false;
-        gameScreen.classList.add('hidden');
-        joinScreen.classList.add('hidden');
-        landingScreen.classList.remove('hidden');
-        joinForm.reset();
-        player = null;
-        gameState = null;
-    }, 5000);
+
+    console.log(`isInAdminPrivateGame: ${isInAdminPrivateGame}`)
+    if (!isInAdminPrivateGame) {
+        console.log(`animationFrameId: ${animationFrameId}`)
+        timerDisplay.textContent = "00:00";
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+        gameStartTime = null;
+        menu.classList.add('hidden');
+
+        setTimeout(() => {
+            socket.emit('leaveLobby');
+            inGame = false;
+            gameScreen.classList.add('hidden');
+            joinScreen.classList.add('hidden');
+            landingScreen.classList.remove('hidden');
+            joinForm.reset();
+            player = null;
+            gameState = null;
+        }, 5000);
+    }
+});
+
+socket.on('enableSinglePlayerControls', () => {
+    singlePlayerModeControls.style.display = 'block';
+    document.body.classList.add('admin-user');
 });
 
 document.addEventListener('keydown', (event) => {
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
-        event.preventDefault();
+    if (animationFrameId) {
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+            event.preventDefault();
+        }
+        socket.emit('playerInput', {key: event.key, state: 'down'});
     }
-    socket.emit('playerInput', { key: event.key, state: 'down' });
 });
 document.addEventListener('keyup', (event) => {
-    socket.emit('playerInput', { key: event.key, state: 'up' });
+    if (animationFrameId) {
+        socket.emit('playerInput', {key: event.key, state: 'up'});
+    }
 });
 
 document.getElementById('startSinglePlayer').addEventListener('click', () => {
@@ -521,6 +629,31 @@ document.getElementById('startSinglePlayer').addEventListener('click', () => {
         }
     });
 });
+
+const style = document.createElement('style');
+style.textContent = `
+    #gameArea {
+        position: relative;
+        overflow: hidden;
+        transform: translateZ(0);
+        will-change: transform;
+    }
+    
+    .player, .bullet, .collectible {
+        position: absolute;
+        transform: translateZ(0);
+        will-change: transform;
+    }
+    
+    .admin-user #singlePlayerModeControls {
+        display: block !important;
+    }
+    
+    body:not(.admin-user) #singlePlayerModeControls {
+        display: none !important;
+    }
+`;
+document.head.appendChild(style);
 
 let lastFrameTime = 0;
 const fpsInterval = 1000 / 60;
