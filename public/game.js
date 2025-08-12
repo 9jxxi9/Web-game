@@ -313,6 +313,38 @@ joinForm.addEventListener('submit', (e) => {
     socket.emit('join', { name: name });
 });
 
+socket.on('adminStatus', (data) => {
+    if (data.isAdmin) {
+        // Show controls to admin only
+        document.getElementById('adminControls').style.display = 'block';
+    } else {
+        // Hide controls for regular players
+        document.getElementById('adminControls').style.display = 'none';
+    }
+});
+
+socket.on('forceReturnToMenu', () => {
+    // Forcefully return the player to the main menu
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+    gameStartTime = null;
+    pausedTimeAcc = 0;
+    pauseStartTime = null;
+    inGame = false;
+
+    gameScreen.classList.add('hidden');
+    joinScreen.classList.add('hidden');
+    landingScreen.classList.remove('hidden');
+    menu.classList.add('hidden');
+
+    joinForm.reset();
+    player = null;
+    gameState = null;
+
+    // Showing a message to the user
+    alert('Game ended because admin left or disconnected.');
+});
+
 socket.on('joinSuccess', (data) => {
     player = data;
     joinForm.classList.add('hidden');
@@ -328,11 +360,17 @@ socket.on('lobbyUpdate', (players) => {
     const ids = Object.keys(players);
     ids.forEach(id => {
         const p = document.createElement('div');
-        p.textContent = players[id].name;
+        const playerData = players[id];
+        // Showing admin status
+        const adminLabel = playerData.isAdmin ? ' [ADMIN]' : '';
+        p.textContent = playerData.name + adminLabel;
         lobbyPlayersDiv.appendChild(p);
     });
-    if (player && ids.length > 0 && ids[0] === player.id) {
+
+    // The game launch button is shown only for the admin
+    if (player && player.isAdmin) {
         startGameBtn.classList.remove('hidden');
+        startGameBtn.textContent = 'Start Game (Admin)';
     } else {
         startGameBtn.classList.add('hidden');
     }
@@ -429,6 +467,7 @@ socket.on('gameState', (state) => {
 });
 
 socket.on('gameOver', (data) => {
+    console.log('[CLIENT] Game Over!', data);
     timerDisplay.textContent = "00:00";
     cancelAnimationFrame(animationFrameId);
     animationFrameId = null;

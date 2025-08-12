@@ -1,6 +1,7 @@
 const { GAME_WIDTH, GAME_HEIGHT, PLAYER_SIZE, getRandomColor, GAME_MODES } = require('./constants');
 
 function resetGameState(gameState) {
+    const adminId = gameState.adminId; // Save the admin
     gameState.players = {};
     gameState.bullets = [];
     gameState.collectibles = [];
@@ -11,12 +12,17 @@ function resetGameState(gameState) {
     gameState.gameStarted = false;
     gameState.gameEnded = false;
     gameState.gameStartTime = null;
+    gameState.adminId = adminId; // Restoring admin
+}
+
+function isAdmin(socket, gameState) {
+    return socket.id === gameState.adminId;
 }
 
 function handleJoin(socket, data, gameState, io, callback) {
-    if (gameState.mode === GAME_MODES.SINGLE && socket.id !== gameState.leader) {
-        socket.emit('joinError', { error: 'Single player mode active' });
-        if (callback) callback({ error: 'Single player mode active' });
+    if (gameState.mode === GAME_MODES.SINGLE && !isAdmin(socket, gameState)) {
+        socket.emit('joinError', { error: 'Single player mode active - only admin can control' });
+        if (callback) callback({ error: 'Single player mode active - only admin can control' });
         return;
     }
     if (Object.keys(gameState.players).length >= 4) {
@@ -40,7 +46,8 @@ function handleJoin(socket, data, gameState, io, callback) {
         lives: 3,
         alive: true,
         color: data.color || getRandomColor(),
-        inputs: {}
+        inputs: {},
+        isAdmin: isAdmin(socket, gameState)
     };
     socket.emit('joinSuccess', gameState.players[socket.id]);
     io.emit('lobbyUpdate', gameState.players);
@@ -56,9 +63,15 @@ function handlePlayerInput(socket, input, gameState) {
 }
 
 function handleMenuAction(socket, data, gameState, io) {
+    // Checking administrator rights to manage the game
+    if (!isAdmin(socket, gameState)) {
+        socket.emit('gameMessage', 'Only admin can control the game.');
+        return;
+    }
+
     const player = gameState.players[socket.id];
     if (player && gameState.gameStarted) {
-        io.emit('gameMessage', `${player.name} ${data.action} the game.`);
+        io.emit('gameMessage', `Admin ${data.action} the game.`);
         if (data.action === 'pause') {
             gameState.paused = true;
         } else if (data.action === 'resume') {
@@ -79,45 +92,66 @@ function handleMenuAction(socket, data, gameState, io) {
                 p.y = Math.floor(Math.random() * (GAME_HEIGHT - PLAYER_SIZE));
                 p.inputs = {};
             });
-            io.emit('gameMessage', `${player.name} restarted the game.`);
+            io.emit('gameMessage', `Admin restarted the game.`);
             io.emit('gameStarted', gameState);
         } else if (data.action === 'quit') {
-            delete gameState.players[socket.id];
-            io.emit('lobbyUpdate', gameState.players);
-            if (Object.keys(gameState.players).length === 0 || gameState.mode === GAME_MODES.SINGLE) {
-                resetGameState(gameState);
-            }
+            // Admin ends the game for everyone and returns to the main menu
+            io.emit('gameMessage', 'Admin ended the game.');
+            io.emit('gameOver', { reason: 'Admin ended game' });
+            resetGameState(gameState);
         }
     }
 }
 
 function handleLeaveLobby(socket, gameState, io) {
     if (gameState.players[socket.id]) {
-        io.emit('gameMessage', `${gameState.players[socket.id].name} has left the lobby.`);
+        const playerName = gameState.players[socket.id].name;
+
+        // If the admin leaves the lobby - we end the game for everyone
+        if (isAdmin(socket, gameState)) {
+            io.emit('gameMessage', `Admin ${playerName} left the lobby. Game ended.`);
+            io.emit('gameOver', { reason: 'Admin left the game' });
+
+            // Send all remaining players to the main screen
+            Object.keys(gameState.players).forEach(playerId => {
+                if (playerId !== socket.id) {
+                    io.to(playerId).emit('forceReturnToMenu');
+                }
+            });
+
+            resetGameState(gameState);
+            return;
+        }
+
+        // regular player leaves the lobby
+        io.emit('gameMessage', `${playerName} has left the lobby.`);
         delete gameState.players[socket.id];
         io.emit('lobbyUpdate', gameState.players);
-
-        if (Object.keys(gameState.players).length === 0) {
-            resetGameState(gameState);
-        }
     }
 }
 
 function handleStartGame(socket, gameState, io) {
-    console.log("[SERVER] StartGame processing. Current mode:", gameState.mode);
-    
+    // Only administrator can run games
+    if (!isAdmin(socket, gameState)) {
+        socket.emit('gameMessage', 'Only admin can start the game.');
+        return;
+    }
+
+    console.log("[SERVER] StartGame processing by admin. Current mode:", gameState.mode);
+
     if (gameState.mode === GAME_MODES.SINGLE) {
-        console.log("[SERVER] Launch Single Player. NPC:", gameState.npcCount);
-        
+        console.log("[SERVER] Admin launching Single Player. NPCs:", gameState.npcs.length);
+
         gameState.players = {};
         gameState.bullets = [];
         gameState.collectibles = [];
         gameState.gameStarted = true;
         gameState.gameStartTime = Date.now();
-        
+
+        // Admin plays as the only real player
         gameState.players[socket.id] = {
             id: socket.id,
-            name: 'Player',
+            name: 'Admin Player',
             x: Math.random() * (GAME_WIDTH - PLAYER_SIZE),
             y: Math.random() * (GAME_HEIGHT - PLAYER_SIZE),
             score: 0,
@@ -125,7 +159,8 @@ function handleStartGame(socket, gameState, io) {
             alive: true,
             color: getRandomColor(),
             inputs: {},
-            isNPC: false
+            isNPC: false,
+            isAdmin: true
         };
 
         gameState.npcs.forEach((npcConfig, index) => {
@@ -143,6 +178,7 @@ function handleStartGame(socket, gameState, io) {
                 color: '#666666',
                 inputs: {},
                 isNPC: true,
+                isAdmin: false,
                 difficulty: difficulty || 'custom',
                 customConfig: {
                     speed,
@@ -150,38 +186,59 @@ function handleStartGame(socket, gameState, io) {
                     evasion
                 }
             };
-
-            console.log("[SERVER] Created NPC:", npcId, gameState.players[npcId]);
         });
 
         io.emit('gameStarted', gameState);
-        console.log("[SERVER] GameStarted event sent");
+        console.log("[SERVER] GameStarted event sent by admin");
         return;
     }
+
     if (gameState.mode === GAME_MODES.MULTI) {
-        // Make sure there are no NPCs left.
         gameState.npcs = [];
+
+        if (Object.keys(gameState.players).length < 2) {
+            socket.emit('gameMessage', 'Need at least 2 players for multiplayer');
+            return;
+        }
+
+        if (!gameState.gameStarted) {
+            gameState.gameStarted = true;
+            gameState.gameStartTime = Date.now();
+            io.emit('gameStarted', gameState);
+            io.emit('gameMessage', 'Admin started multiplayer game!');
+        }
     }
-    if (Object.keys(gameState.players).length < 2) {
-        console.log('[DEBUG] Not enough players for multiplayer');
-        socket.emit('gameMessage', 'Need at least 2 players');
-        return;
-    }
-    const leadId = Object.keys(gameState.players)[0];
-    if (socket.id === leadId && !gameState.gameStarted) {
-        gameState.gameStarted = true;
-        gameState.gameStartTime = Date.now();
-        io.emit('gameStarted', gameState);
-        io.emit('gameMessage', 'Game has started!');
-    }
-    console.log('Starting game in mode:', gameState.mode);
+
+    console.log('Admin starting game in mode:', gameState.mode);
     console.log('Players:', Object.keys(gameState.players));
-    console.log('NPC count:', gameState.npcCount);
+    console.log('NPC count:', gameState.npcs.length);
 }
 
 function handleDisconnect(socket, gameState, io) {
     if (gameState.players[socket.id]) {
-        io.emit('gameMessage', `${gameState.players[socket.id].name} has disconnected.`);
+        const playerName = gameState.players[socket.id].name;
+
+        // If the admin disconnected, end the game for everyone
+        if (isAdmin(socket, gameState)) {
+            console.log(`[SERVER] Admin ${playerName} disconnected - ending game for all players`);
+
+            // notify all other players
+            Object.keys(gameState.players).forEach(playerId => {
+                if (playerId !== socket.id) {
+                    io.to(playerId).emit('gameMessage', `Admin ${playerName} disconnected. Game ended.`);
+                    io.to(playerId).emit('gameOver', { reason: 'Admin disconnected' });
+                    io.to(playerId).emit('forceReturnToMenu');
+                }
+            });
+
+            // Reset the game state completely
+            resetGameState(gameState);
+            gameState.adminId = null; // remove the admin completely
+            return;
+        }
+
+        // The regular player has disconnected
+        io.emit('gameMessage', `${playerName} has disconnected.`);
         delete gameState.players[socket.id];
         io.emit('lobbyUpdate', gameState.players);
     }
@@ -190,11 +247,12 @@ function handleDisconnect(socket, gameState, io) {
 function registerSocketHandlers(io, gameState) {
     io.on('connection', socket => {
         console.log('A new player connected:', socket.id);
+
         socket.on('startGame', () => {
-            console.log("[SERVER] The StartGame request was received from:", socket.id);
+            console.log("[SERVER] StartGame request received from:", socket.id, "Is admin:", isAdmin(socket, gameState));
             handleStartGame(socket, gameState, io);
         });
-        
+
         socket.on('join', (data, callback) => handleJoin(socket, data, gameState, io, callback));
         socket.on('playerInput', input => handlePlayerInput(socket, input, gameState));
         socket.on('menuAction', data => handleMenuAction(socket, data, gameState, io));
@@ -202,24 +260,34 @@ function registerSocketHandlers(io, gameState) {
         socket.on('disconnect', () => handleDisconnect(socket, gameState, io));
 
         socket.on('setGameMode', (data, callback) => {
+            // Only the administrator can change the game mode.
+            if (!isAdmin(socket, gameState)) {
+                if (typeof callback === 'function') {
+                    callback({ success: false, error: 'Only admin can change game mode' });
+                }
+                socket.emit('gameMessage', 'Only admin can change game mode.');
+                return;
+            }
+
             gameState.mode = data.mode;
 
             if (data.mode === 'single') {
                 gameState.leader = socket.id;
-                gameState.npcs = data.npcs || []; // save the NPC array
+                gameState.npcs = data.npcs || [];
+                console.log("[SERVER] Admin set single player mode with", gameState.npcs.length, "NPCs");
             } else if (data.mode === 'multi') {
-                // Reset NPC and mode when switching to multiplayer
                 gameState.npcs = [];
                 gameState.leader = null;
+                console.log("[SERVER] Admin set multiplayer mode");
             } else if (data.mode === 'none') {
                 resetGameState(gameState);
+                console.log("[SERVER] Admin reset game state");
             }
 
             if (typeof callback === 'function') {
                 callback({ success: true });
             }
         });
-
     });
 }
 
